@@ -1,0 +1,132 @@
+import requests
+from pynput import keyboard
+from time import sleep
+import sys
+import termios
+import tty
+import subprocess
+
+class Injector:
+    def __init__(self, url, request_type, encoding_type=None, body=None):
+        self.url = url
+        self.request_type = request_type
+        self.body = body
+        self.encoding_type = encoding_type
+        self.url_encoding_mask = url
+        self.body_encoding_mask = body
+    def define_mask(self, url_encoding_mask=None, body_encoding_mask=None):
+        self.url_encoding_mask = url_encoding_mask
+        self.body_encoding_mask = body_encoding_mask
+    def inject_command(self, command):
+        self.url = self.url.replace("COMMAND", command)
+        self.request_type = self.request_type.replace("COMMAND", command)
+        self.body = self.body.replace("COMMAND", command)
+    def encode_url(self):
+        spliturl = []
+        while "ENCS" in self.url_encoding_mask:
+            pass
+
+class History:
+    def __init__(self):
+        self.history = []
+        self.pointer = 0
+    def reset(self):
+        self.pointer = len(self.history)
+    def add_to_history(self, new_command):
+        if ";" in new_command:
+            for command in new_command.split(";"):
+                self.history.append(command)
+        else:
+            self.history.append(new_command)
+        self.reset()
+    def previous_history(self):
+        self.pointer -= 1
+        if self.pointer < 0:
+            self.pointer = 0
+        if len(self.history) == 0:
+            return ""
+        return self.history[self.pointer]
+    def next_history(self):
+        self.pointer += 1
+        if self.pointer >= len(self.history):
+            self.pointer = len(self.history)
+            return ""
+        if len(self.history) == 0:
+            return ""
+        return self.history[self.pointer]
+
+class Shell:
+    def __init__(self, shell_callback):
+        self.shell_callback = shell_callback
+        self.history = History()
+        self.current_command = ""
+        self.fd = sys.stdin.fileno()
+        self.old_settings = termios.tcgetattr(self.fd)
+        tty.setraw(self.fd)
+        sys.stdout.write('\x1b[?1000l')
+        sys.stdout.write('\x1b[?1002l')
+        sys.stdout.write('\x1b[?1003l')
+        sys.stdout.write('\x1b[?1006l')
+        sys.stdout.flush()
+    def clear_command(self):
+        sys.stdout.write("\b \b" * len(self.current_command))
+        sys.stdout.flush()
+        self.current_command = ""
+    def get_next_command(self):
+        while True:
+            ch = sys.stdin.read(1)
+            if ch == "\r":
+                sys.stdout.write("\r\n")
+                sys.stdout.flush()
+                return
+            elif ch == "\x7f":
+                if len(self.current_command) > 0:
+                    self.current_command = self.current_command[:-1]
+                    ch = "\b \b"
+                else:
+                    ch = ""
+            elif ch == "\x03":
+                exit()
+            if ch == "\x1b":
+                ch += sys.stdin.read(1)
+                ch += sys.stdin.read(1)
+                if ch != "\x1b[B" and ch != "\x1b[A":
+                    continue
+            if ch == "\x1b[B":
+                self.clear_command()
+                self.current_command = self.history.next_history()
+                sys.stdout.write(self.current_command)
+                sys.stdout.flush()
+                continue
+            elif ch == "\x1b[A":
+                self.clear_command()
+                self.current_command = self.history.previous_history()
+                sys.stdout.write(self.current_command)
+                sys.stdout.flush()
+                continue
+            sys.stdout.write(ch)
+            sys.stdout.flush()
+            if ch != "\b \b":
+                self.current_command += ch
+    def run(self):
+        print("Welcome to psuedoshell (Press Ctrl+C to exit)\n\r")
+        while self.current_command != "exit":
+            self.current_command = ""
+            sys.stdout.write("> ")
+            sys.stdout.flush()
+            self.get_next_command()
+            output = self.shell_callback(self.current_command)
+            sys.stdout.write(output.replace("\n", "\n\r"))
+            sys.stdout.flush()
+            self.history.add_to_history(self.current_command)
+
+def shell_run_command(command):
+    return subprocess.check_output(command, shell=True, text=True)
+
+def send_command(injector):
+    response = requests.get(injector.url)
+    return response.text
+
+if __name__ == "__main__":
+    shell = Shell(shell_run_command)
+    shell.run()
