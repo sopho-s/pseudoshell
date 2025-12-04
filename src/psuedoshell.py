@@ -59,6 +59,16 @@ class History:
         if len(self.history) == 0:
             return ""
         return self.history[self.pointer]
+    def dump_history_command(self):
+        if len(self.history) == 0:
+            return ";"
+        history_dump = "\\n".join(self.history).replace("\n", "\\n")
+        history_dump = 'echo "' + history_dump + '"'
+        return history_dump
+    def clear_history_command(self):
+        self.history = []
+        self.pointer = 0
+        return "return 0"
 
 class Shell:
     def __init__(self, shell_callback):
@@ -120,10 +130,17 @@ class Shell:
             sys.stdout.write("> ")
             sys.stdout.flush()
             self.get_next_command()
-            output = self.shell_callback(self.current_command)
+            truecommand = self.current_command
+            self.current_command = self.current_command.replace("history dump", self.history.dump_history_command())
+            if "history clear" in self.current_command:
+                self.current_command = self.history.clear_history_command()
+            try:
+                output = self.shell_callback(self.current_command)
+            except:
+                output = "\r"
             sys.stdout.write(output.replace("\n", "\n\r"))
             sys.stdout.flush()
-            self.history.add_to_history(self.current_command)
+            self.history.add_to_history(truecommand)
 
 def shell_run_command(command):
     return subprocess.check_output(command, shell=True, text=True)
